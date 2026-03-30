@@ -49,6 +49,8 @@ export class UsersService {
     role: Role | undefined,
     accountId: Types.ObjectId,
     accountTier: AccountTier,
+    passwordHash: string,
+    passwordSalt: string,
   ) {
     const finalPhone = this.formatLoginPhone(phone);
     this.logger.info('Creating owner user', {
@@ -76,6 +78,8 @@ export class UsersService {
       role: role ?? Role.OWNER,
       accountTier,
       accountId,
+      passwordHash,
+      passwordSalt,
       isActive: true,
     });
 

@@ -11,6 +11,7 @@ import { Role } from 'src/users/schemas/user.schema';
 import { sanitizeAccountPermissions } from 'src/accounts/constants/account-permissions.constants';
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { ACCOUNT_PRESETS } from 'src/accounts/constants/account-presets.constants';
+import { buildPasswordHash, verifyPassword } from './password.util';
 
 const logger = new Logger('auth.service');
 
@@ -49,6 +50,7 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const finalPhone = this.formatPhone(dto.phone);
     const tier = AccountTier.STARTER;
+    const { passwordHash, passwordSalt } = buildPasswordHash(dto.password);
 
     logger.info('Register owner requested', {
       originalPhone: dto.phone,
@@ -64,9 +66,11 @@ export class AuthService {
     const user = await this.usersService.createOwner(
       finalPhone,
       dto.name,
-      Role.OWNER,
+      Role.ADMIN,
       account._id,
       tier,
+      passwordHash,
+      passwordSalt,
     );
 
     const accessToken = this.sign({
@@ -95,6 +99,19 @@ export class AuthService {
         phone: finalPhone,
       });
       throw new UnauthorizedException('Invalid phone');
+    }
+
+    const isPasswordValid = verifyPassword(
+      dto.password,
+      user.passwordSalt,
+      user.passwordHash,
+    );
+
+    if (!isPasswordValid) {
+      logger.warn('Login failed: invalid password', {
+        userId: user._id.toString(),
+      });
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     await this.usersService.touchLogin(user._id.toString());

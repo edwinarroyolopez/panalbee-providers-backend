@@ -16,6 +16,12 @@ export class User {
   @Prop({ required: true, unique: true, index: true })
   phone: string;
 
+  @Prop({ required: true })
+  passwordHash: string;
+
+  @Prop({ required: true })
+  passwordSalt: string;
+
   @Prop({ enum: Role, default: Role.OWNER })
   role: Role;
 

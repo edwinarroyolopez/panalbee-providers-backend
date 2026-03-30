@@ -1,5 +1,4 @@
-// src/modules/auth/dto/register.dto.ts
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
@@ -10,4 +9,9 @@ export class RegisterDto {
   @IsString()
   @MaxLength(80)
   name?: string;
+
+  @IsString()
+  @MinLength(6)
+  @MaxLength(128)
+  password: string;
 }

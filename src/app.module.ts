@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { UploadsModule } from './uploads/uploads.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { CapabilitiesModule } from './capabilities/capabilities.module';
+import { ProvidersModule } from './providers/providers.module';
+import { ProductsModule } from './products/products.module';
 import configuration from './config/config';
 
 @Module({
@@ -28,6 +30,8 @@ import configuration from './config/config';
     UsersModule,
     AccountsModule,
     CapabilitiesModule,
+    ProvidersModule,
+    ProductsModule,
     UploadsModule,
   ],
   controllers: [AppController],
