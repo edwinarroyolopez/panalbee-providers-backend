@@ -132,6 +132,18 @@ export class ProductsService {
       throw new BadRequestException('La decision requiere al menos un motivo estructurado.');
     }
 
+    if (dto.nextStatus === ProductStatus.EXPORTADO) {
+      throw new BadRequestException(
+        'El estado exportado solo se alcanza mediante exportacion controlada.',
+      );
+    }
+
+    if (dto.decisionType === ProductDecisionType.EXPORTAR) {
+      throw new BadRequestException(
+        'La decision exportar solo se registra mediante el endpoint de exportacion.',
+      );
+    }
+
     if (
       dto.decisionType === ProductDecisionType.DESCARTAR &&
       dto.nextStatus !== ProductStatus.DESCARTADO

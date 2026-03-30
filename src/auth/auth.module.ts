@@ -8,7 +8,6 @@ import { JwtStrategy } from './jwt.strategy';
 
 import { UsersModule } from '../users/users.module';
 import { AccountsModule } from 'src/accounts/accounts.module';
-import { CapabilitiesModule } from 'src/capabilities/capabilities.module';
 
 import { jwtConstants } from './constants';
 import type { StringValue } from 'ms';
@@ -17,7 +16,6 @@ import type { StringValue } from 'ms';
   imports: [
     UsersModule,
     AccountsModule,
-    CapabilitiesModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: jwtConstants.secret,

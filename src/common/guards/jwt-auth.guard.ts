@@ -27,7 +27,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       role: user.role ?? dbUser.role,
       phone: user.phone ?? dbUser.phone,
       accountId: user.accountId ?? dbUser.accountId?.toString?.(),
-      accountTier: user.accountTier ?? dbUser.accountTier,
     };
 
     logger.debug('JWT auth success', {

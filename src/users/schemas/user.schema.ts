@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { Account, AccountTier } from 'src/accounts/schemas/account.schema';
+import { Account } from 'src/accounts/schemas/account.schema';
 
 export type UserDocument = User & Document;
 
@@ -24,10 +24,6 @@ export class User {
 
   @Prop({ enum: Role, default: Role.OWNER })
   role: Role;
-
-  /** Mirrors the account tier at creation / billing sync time. */
-  @Prop({ enum: AccountTier })
-  accountTier: AccountTier;
 
   @Prop({ type: Types.ObjectId, ref: Account.name, required: true })
   accountId: Types.ObjectId;

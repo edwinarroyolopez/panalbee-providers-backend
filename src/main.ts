@@ -2,6 +2,9 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
+import dns from 'node:dns';
+dns.setServers(['1.1.1.1', '8.8.8.8']);
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
@@ -13,6 +16,7 @@ async function bootstrap() {
   app.enableCors({
     origin: origins,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    exposedHeaders: ['X-Export-Id'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',

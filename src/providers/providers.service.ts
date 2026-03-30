@@ -5,21 +5,29 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { Provider, ProviderDocument } from './schemas/provider.schema';
 import {
   ProviderDecision,
   ProviderDecisionDocument,
 } from './schemas/provider-decision.schema';
-import { ImportProviderItem, ImportProvidersDto } from './dto/import-providers.dto';
+import {
+  ImportProviderItem,
+  ImportProvidersDto,
+  ProviderImportMode,
+} from './dto/import-providers.dto';
 import { ListProvidersQueryDto } from './dto/list-providers.dto';
 import { ChangeProviderStateDto } from './dto/change-provider-state.dto';
 import { ProviderDecisionType, ProviderStatus } from './providers.types';
+import { IntakeLote, IntakeLoteDocument } from '../products/schemas/intake-lote.schema';
+import { Product, ProductDocument } from '../products/schemas/product.schema';
 
-type ImportValidationError = {
+export type ProviderImportValidationError = {
   index: number;
   field: string;
+  code: string;
   message: string;
+  blocksRecord: boolean;
 };
 
 type NormalizedProviderInput = {
@@ -71,6 +79,10 @@ export class ProvidersService {
     private readonly providerModel: Model<ProviderDocument>,
     @InjectModel(ProviderDecision.name)
     private readonly providerDecisionModel: Model<ProviderDecisionDocument>,
+    @InjectModel(IntakeLote.name)
+    private readonly intakeLoteModel: Model<IntakeLoteDocument>,
+    @InjectModel(Product.name)
+    private readonly productModel: Model<ProductDocument>,
   ) {}
 
   private normalizeText(input?: string): string {
@@ -125,25 +137,65 @@ export class ProvidersService {
     };
   }
 
+  private blockedIndicesFromErrors(errors: ProviderImportValidationError[]): Set<number> {
+    const blocked = new Set<number>();
+    for (const e of errors) {
+      if (e.blocksRecord) blocked.add(e.index);
+    }
+    return blocked;
+  }
+
+  private summarizeProviderImport(
+    total: number,
+    errors: ProviderImportValidationError[],
+  ): {
+    total: number;
+    insertableCount: number;
+    notInsertableCount: number;
+    errorCount: number;
+    insertableIndices: number[];
+  } {
+    const blocked = this.blockedIndicesFromErrors(errors);
+    const insertableIndices: number[] = [];
+    for (let i = 0; i < total; i += 1) {
+      if (!blocked.has(i)) insertableIndices.push(i);
+    }
+    return {
+      total,
+      insertableCount: insertableIndices.length,
+      notInsertableCount: blocked.size,
+      errorCount: errors.length,
+      insertableIndices,
+    };
+  }
+
   private async validateImportPayload(dto: ImportProvidersDto): Promise<{
     normalized: NormalizedProviderInput[];
-    errors: ImportValidationError[];
+    errors: ProviderImportValidationError[];
   }> {
     const normalized = dto.providers.map((item) => this.normalizeImportItem(item));
-    const errors: ImportValidationError[] = [];
+    const errors: ProviderImportValidationError[] = [];
 
     const keyToIndexes = new Map<string, number[]>();
 
     normalized.forEach((item, index) => {
       if (!item.name) {
-        errors.push({ index, field: 'name', message: 'El nombre es obligatorio.' });
+        errors.push({
+          index,
+          field: 'name',
+          code: 'campo_requerido',
+          message: 'El nombre es obligatorio.',
+          blocksRecord: true,
+        });
       }
 
       if (!item.mainCategory) {
         errors.push({
           index,
           field: 'category',
-          message: 'La categoria principal es obligatoria.',
+          code: 'campo_requerido',
+          message: 'La categoría principal es obligatoria.',
+          blocksRecord: true,
         });
       }
 
@@ -151,7 +203,9 @@ export class ProvidersService {
         errors.push({
           index,
           field: 'country',
-          message: 'El pais es obligatorio.',
+          code: 'campo_requerido',
+          message: 'El país es obligatorio.',
+          blocksRecord: true,
         });
       }
 
@@ -166,7 +220,9 @@ export class ProvidersService {
         errors.push({
           index,
           field: 'intakeKey',
-          message: 'Proveedor duplicado dentro del mismo archivo.',
+          code: 'duplicado_en_archivo',
+          message: 'Proveedor duplicado dentro del mismo archivo (misma clave de intake).',
+          blocksRecord: true,
         });
       });
     });
@@ -184,7 +240,9 @@ export class ProvidersService {
         errors.push({
           index,
           field: 'intakeKey',
-          message: 'Proveedor ya registrado previamente.',
+          code: 'duplicado_en_base',
+          message: 'Ya existe un proveedor con la misma clave de intake en el airlock.',
+          blocksRecord: true,
         });
       }
     });
@@ -194,44 +252,163 @@ export class ProvidersService {
 
   async validateImport(dto: ImportProvidersDto) {
     const { errors, normalized } = await this.validateImportPayload(dto);
+    const summary = this.summarizeProviderImport(normalized.length, errors);
 
     return {
-      valid: errors.length === 0,
-      summary: {
-        total: normalized.length,
-        valid: errors.length === 0 ? normalized.length : 0,
-        invalid: errors.length > 0 ? normalized.length : 0,
-      },
+      valid: summary.insertableCount === summary.total,
+      summary,
       errors,
     };
   }
 
   async importProviders(dto: ImportProvidersDto, actorUserId: string) {
+    const importMode: ProviderImportMode = dto.importMode ?? 'all_or_nothing';
     const { errors, normalized } = await this.validateImportPayload(dto);
+    const summary = this.summarizeProviderImport(normalized.length, errors);
 
-    if (errors.length > 0) {
+    if (importMode === 'all_or_nothing' && errors.length > 0) {
       throw new BadRequestException({
-        message: 'El archivo JSON contiene errores de validacion.',
+        message: 'El archivo JSON contiene errores de validación.',
         errors,
+        summary,
       });
     }
 
-    const now = new Date();
+    const blocked = this.blockedIndicesFromErrors(errors);
+    const toInsert = normalized.filter((_, i) => !blocked.has(i));
 
-    const inserted = await this.providerModel.insertMany(
-      normalized.map((item) => ({
-        ...item,
-        status: ProviderStatus.INGRESADO,
-        createdByUserId: actorUserId,
-        updatedByUserId: actorUserId,
-        createdAt: now,
-        updatedAt: now,
-      })),
-    );
+    if (toInsert.length === 0) {
+      throw new BadRequestException({
+        message: 'No hay registros insertables en este archivo.',
+        errors,
+        summary,
+      });
+    }
+
+    const validationSnapshot = errors.map((e) => ({
+      index: e.index,
+      field: e.field,
+      message: e.message,
+      code: e.code,
+      blocksRecord: e.blocksRecord,
+    }));
+
+    const now = new Date();
+    const lotePayload = {
+      kind: 'proveedores' as const,
+      summary: {
+        total: normalized.length,
+        valid: summary.insertableCount,
+        invalid: summary.notInsertableCount,
+        inserted: toInsert.length,
+        skipped:
+          importMode === 'insert_valid_only' ? summary.notInsertableCount : undefined,
+        importMode,
+      },
+      validationErrors: importMode === 'insert_valid_only' ? validationSnapshot : [],
+      actorUserId,
+    };
+
+    const session: ClientSession = await this.providerModel.startSession();
+    let intakeLote: IntakeLoteDocument;
+    let inserted: ProviderDocument[];
+    try {
+      await session.withTransaction(async () => {
+        const [created] = await this.intakeLoteModel.create([lotePayload], { session });
+        intakeLote = created;
+        const docs = toInsert.map((item) => ({
+          ...item,
+          intakeLoteId: created._id,
+          status: ProviderStatus.INGRESADO,
+          createdByUserId: actorUserId,
+          updatedByUserId: actorUserId,
+          createdAt: now,
+          updatedAt: now,
+        }));
+        inserted = await this.providerModel.insertMany(docs, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    const skippedCount = normalized.length - inserted!.length;
 
     return {
-      insertedCount: inserted.length,
-      providers: inserted,
+      intakeLote: intakeLote!,
+      insertedCount: inserted!.length,
+      skippedCount,
+      importMode,
+      providers: inserted!,
+    };
+  }
+
+  async listProviderImportLotes() {
+    const items = await this.intakeLoteModel
+      .find({ kind: 'proveedores' })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean()
+      .exec();
+
+    return { items };
+  }
+
+  async revertProviderImportLote(loteId: string, actorUserId: string) {
+    if (!Types.ObjectId.isValid(loteId)) {
+      throw new NotFoundException('Carga no encontrada.');
+    }
+
+    const lote = await this.intakeLoteModel.findById(loteId).exec();
+    if (!lote || lote.kind !== 'proveedores') {
+      throw new NotFoundException('Carga no encontrada.');
+    }
+
+    if (lote.revokedAt) {
+      throw new ConflictException('Esta carga ya fue revertida previamente.');
+    }
+
+    const providers = await this.providerModel.find({ intakeLoteId: lote._id }).exec();
+
+    for (const p of providers) {
+      if (p.status !== ProviderStatus.INGRESADO) {
+        throw new ConflictException(
+          `No se puede revertir la carga: el proveedor «${p.name}» ya fue movido de estado ingresado.`,
+        );
+      }
+      const productCount = await this.productModel.countDocuments({ providerId: p._id }).exec();
+      if (productCount > 0) {
+        throw new ConflictException(
+          `No se puede revertir la carga: el proveedor «${p.name}» ya tiene productos asociados.`,
+        );
+      }
+    }
+
+    const session: ClientSession = await this.providerModel.startSession();
+    let deletedCount = 0;
+    try {
+      await session.withTransaction(async () => {
+        const del = await this.providerModel
+          .deleteMany({ intakeLoteId: lote._id })
+          .session(session)
+          .exec();
+        deletedCount = del.deletedCount ?? 0;
+        await this.intakeLoteModel
+          .findByIdAndUpdate(
+            lote._id,
+            { revokedAt: new Date(), revokedByUserId: actorUserId },
+            { session },
+          )
+          .exec();
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    return {
+      ok: true,
+      deletedProviderCount: deletedCount,
+      loteId: String(lote._id),
+      revokedAt: new Date().toISOString(),
     };
   }
 

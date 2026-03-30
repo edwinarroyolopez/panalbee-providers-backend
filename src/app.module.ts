@@ -8,9 +8,9 @@ import { ConfigModule } from '@nestjs/config';
 import { ConfigService } from '@nestjs/config';
 import { UploadsModule } from './uploads/uploads.module';
 import { AccountsModule } from './accounts/accounts.module';
-import { CapabilitiesModule } from './capabilities/capabilities.module';
 import { ProvidersModule } from './providers/providers.module';
 import { ProductsModule } from './products/products.module';
+import { ExportsModule } from './exports/exports.module';
 import configuration from './config/config';
 
 @Module({
@@ -29,9 +29,9 @@ import configuration from './config/config';
     AuthModule,
     UsersModule,
     AccountsModule,
-    CapabilitiesModule,
     ProvidersModule,
     ProductsModule,
+    ExportsModule,
     UploadsModule,
   ],
   controllers: [AppController],

@@ -3,7 +3,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument, Role } from './schemas/user.schema';
 import Logger from 'src/utils/logger/logger';
-import { AccountTier } from 'src/accounts/schemas/account.schema';
 
 @Injectable()
 export class UsersService {
@@ -48,7 +47,6 @@ export class UsersService {
     name: string | undefined,
     role: Role | undefined,
     accountId: Types.ObjectId,
-    accountTier: AccountTier,
     passwordHash: string,
     passwordSalt: string,
   ) {
@@ -58,7 +56,6 @@ export class UsersService {
       finalPhone,
       name,
       accountId,
-      accountTier,
     });
 
     const exists = await this.userModel
@@ -76,7 +73,6 @@ export class UsersService {
       phone: finalPhone,
       name,
       role: role ?? Role.OWNER,
-      accountTier,
       accountId,
       passwordHash,
       passwordSalt,
@@ -96,13 +92,6 @@ export class UsersService {
     await this.userModel.updateOne(
       { _id: userId },
       { $set: { lastLoginAt: new Date() } },
-    );
-  }
-
-  async updateUsersAccountTier(accountId: string, tier: AccountTier) {
-    await this.userModel.updateMany(
-      { accountId: new Types.ObjectId(accountId) },
-      { $set: { accountTier: tier } },
     );
   }
 

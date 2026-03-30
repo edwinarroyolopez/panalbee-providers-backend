@@ -4,13 +4,9 @@ import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import Logger from '../utils/logger/logger';
-import { AccountTier } from 'src/accounts/schemas/account.schema';
 import { AccountsService } from 'src/accounts/accounts.service';
-import { CapabilitiesService } from 'src/capabilities/capabilities.service';
 import { Role } from 'src/users/schemas/user.schema';
-import { sanitizeAccountPermissions } from 'src/accounts/constants/account-permissions.constants';
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
-import { ACCOUNT_PRESETS } from 'src/accounts/constants/account-presets.constants';
 import { buildPasswordHash, verifyPassword } from './password.util';
 
 const logger = new Logger('auth.service');
@@ -21,7 +17,6 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly accountsService: AccountsService,
-    private readonly capabilitiesService: CapabilitiesService,
   ) {}
 
   private formatPhone(phone: string): string {
@@ -36,39 +31,32 @@ export class AuthService {
     phone: string;
     role: string;
     accountId: string;
-    accountTier: AccountTier;
   }) {
     return this.jwtService.sign({
       sub: user.id,
       phone: user.phone,
       role: user.role,
       accountId: user.accountId,
-      accountTier: user.accountTier,
     });
   }
 
   async register(dto: RegisterDto) {
     const finalPhone = this.formatPhone(dto.phone);
-    const tier = AccountTier.STARTER;
     const { passwordHash, passwordSalt } = buildPasswordHash(dto.password);
 
     logger.info('Register owner requested', {
       originalPhone: dto.phone,
       formattedPhone: finalPhone,
-      tier,
     });
 
-    const account = await this.accountsService.create({
-      name: finalPhone,
-      tier,
-    });
+    const orgName = dto.name?.trim() || finalPhone;
+    const account = await this.accountsService.create({ name: orgName });
 
     const user = await this.usersService.createOwner(
       finalPhone,
       dto.name,
       Role.ADMIN,
       account._id,
-      tier,
       passwordHash,
       passwordSalt,
     );
@@ -78,7 +66,6 @@ export class AuthService {
       phone: user.phone,
       role: user.role,
       accountId: account._id.toString(),
-      accountTier: account.tier,
     });
 
     logger.info('Owner registered successfully', {
@@ -125,7 +112,6 @@ export class AuthService {
       phone: user.phone,
       role: user.role,
       accountId: user.accountId.toString(),
-      accountTier: account.tier,
     });
 
     logger.info('Login successful', {
@@ -179,49 +165,21 @@ export class AuthService {
       account._id.toString(),
     );
 
-    /** Until a dedicated workspaces collection exists, expose one logical workspace per account. */
-    const workspaces = [
-      {
-        id: account._id.toString(),
-        name: account.name?.trim() ? account.name.trim() : 'Primary workspace',
-      },
-    ];
-    const workspaceCount = workspaces.length;
-
-    const accountCapabilities = this.capabilitiesService.getAccountCapabilities({
-      tier: account.tier,
-      isActive: account.isActive,
-      memberCount,
-      workspaceCount,
-    });
-
-    const limits = ACCOUNT_PRESETS[account.tier].limits;
-
     return {
       user: {
         id: user._id.toString(),
         phone: user.phone,
         name: user.name,
         role: user.role,
-        accountTier: user.accountTier,
       },
-      account: {
+      organization: {
         id: account._id.toString(),
-        tier: account.tier,
-        billingPlan: account.billingPlan,
+        name: account.name,
         isActive: account.isActive,
-        setupComplete: account.setupComplete,
-        permissions: sanitizeAccountPermissions(account.permissions),
-        subscriptionEndsAt: account.subscriptionEndsAt,
-        trialEndsAt: account.trialEndsAt,
       },
-      workspaces,
-      usage: {
-        workspaces: { used: workspaceCount, max: limits.maxWorkspaces },
-        members: { used: memberCount, max: limits.maxMembers },
+      stats: {
+        activeMembers: memberCount,
       },
-      accountCapabilities,
-      capabilities: accountCapabilities,
     };
   }
 

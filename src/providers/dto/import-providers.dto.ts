@@ -1,6 +1,7 @@
 import {
   ArrayMinSize,
   IsArray,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -72,12 +73,19 @@ class ProviderImportItemDto {
   internalNotes?: string;
 }
 
+export type ProviderImportMode = 'all_or_nothing' | 'insert_valid_only';
+
 export class ImportProvidersDto {
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => ProviderImportItemDto)
   providers: ProviderImportItemDto[];
+
+  /** Por defecto `all_or_nothing` (mismo comportamiento histórico). */
+  @IsOptional()
+  @IsEnum(['all_or_nothing', 'insert_valid_only'])
+  importMode?: ProviderImportMode;
 }
 
 export type ImportProviderItem = ProviderImportItemDto;

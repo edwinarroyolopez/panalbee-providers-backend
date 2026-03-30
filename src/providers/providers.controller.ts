@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -25,9 +26,14 @@ export class ProvidersController {
     return this.providersService.listProviders(query);
   }
 
-  @Get(':providerId')
-  getById(@Param('providerId') providerId: string) {
-    return this.providersService.getProviderById(providerId);
+  @Get('import/lotes')
+  listProviderImportLotes() {
+    return this.providersService.listProviderImportLotes();
+  }
+
+  @Delete('import/lotes/:loteId')
+  revertProviderImportLote(@Param('loteId') loteId: string, @Req() req: any) {
+    return this.providersService.revertProviderImportLote(loteId, req.user.sub);
   }
 
   @Post('import/validate')
@@ -38,6 +44,11 @@ export class ProvidersController {
   @Post('import')
   importProviders(@Body() dto: ImportProvidersDto, @Req() req: any) {
     return this.providersService.importProviders(dto, req.user.sub);
+  }
+
+  @Get(':providerId')
+  getById(@Param('providerId') providerId: string) {
+    return this.providersService.getProviderById(providerId);
   }
 
   @Patch(':providerId/state')

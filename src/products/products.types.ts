@@ -12,4 +12,5 @@ export enum ProductDecisionType {
   DESCARTAR = 'descartar',
   PRIORIZAR = 'priorizar',
   MARCAR_LISTO_SIGUIENTE_PASO = 'marcar_listo_siguiente_paso',
+  EXPORTAR = 'exportar',
 }

@@ -1,7 +1,8 @@
-import { AccountTier, BillingPlan } from '../schemas/account.schema';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateAccountDto {
-  name: string;
-  tier: AccountTier;
-  billingPlan?: BillingPlan;
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
 }

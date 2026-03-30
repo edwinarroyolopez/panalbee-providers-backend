@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 import { ProviderStatus } from '../providers.types';
 
 export type ProviderDocument = HydratedDocument<Provider>;
@@ -54,6 +54,9 @@ export class Provider {
 
   @Prop({ required: true, trim: true, index: true, unique: true })
   intakeKey: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'IntakeLote', index: true })
+  intakeLoteId?: Types.ObjectId;
 
   @Prop({ required: true })
   createdByUserId: string;
