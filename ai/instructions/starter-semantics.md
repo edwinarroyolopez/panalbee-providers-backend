@@ -34,9 +34,11 @@ Single source of truth for **this monorepo’s reusable starters** (`template-we
 - **`tenant`** in user-facing copy or client types for this starter (reserved for true multi-tenant SaaS docs if your product glossary reintroduces it).
 - Ambiguous **`context`** as “the company we’re in” — use **workspace** or **account** explicitly.
 
-**Quarantine**
+**Quarantine & wire-compat**
 
-- Example domain modules may keep **filenames** from older iterations (e.g. `ListBusinessScreen`, `businesses.api.ts`) while **exports, types, and URLs** align to workspace vocabulary. Ingestion code may read legacy DTO keys (`business`, `businessId`, `businessName`) and normalize into workspace-shaped state.
+- `**/quarantine/**` may retain historical filenames and DTO ingestion for **example domain only**. **Canonical modules must not import feature logic from quarantine** except where a file is explicitly documented as a bridge (prefer none).
+- Persist migrations live under `**/storage/legacy/**` (or equivalent); they may read obsolete key strings once when upgrading stored state.
+- At HTTP/push boundaries, normalize alternate JSON keys into `workspace` / `workspaceId` / `workspaceName` in a **single small util** (e.g. `wireWorkspaceBody`, `wireCompatLabels`); UI and stores consume only the normalized shape.
 
 ## Where this decision lives
 
