@@ -30,6 +30,9 @@ RUN yarn install --frozen-lockfile --production && yarn cache clean
 # Copy compiled output from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Prompt templates (read at runtime by ProvidersService; not part of TS emit)
+COPY --from=builder /app/docs ./docs
+
 # Copy secrets needed at runtime (Google Service Account for FCM)
 # These files are referenced via GOOGLE_APPLICATION_CREDENTIALS env var.
 # On Back4App, mount them as a secret or include them here if not sensitive

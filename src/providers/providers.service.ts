@@ -1,14 +1,11 @@
 import {
   BadRequestException,
   ConflictException,
-  InternalServerErrorException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, PipelineStage, Types } from 'mongoose';
-import { promises as fs } from 'fs';
-import { join } from 'path';
 import { Provider, ProviderDocument } from './schemas/provider.schema';
 import {
   ProviderDecision,
@@ -25,6 +22,10 @@ import { ChangeProviderStateDto } from './dto/change-provider-state.dto';
 import { ProviderDecisionType, ProviderStatus } from './providers.types';
 import { IntakeLote, IntakeLoteDocument } from '../products/schemas/intake-lote.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
+import {
+  composeScrapingPromptTemplatesPayload,
+  readPromptTemplateIfPresent,
+} from './prompt-templates.loader';
 
 export type ProviderImportValidationError = {
   index: number;
@@ -89,64 +90,21 @@ export class ProvidersService {
     private readonly productModel: Model<ProductDocument>,
   ) {}
 
-  private promptCandidates(fileName: string): string[] {
-    return [
-      join(process.cwd(), 'docs', fileName),
-      join(process.cwd(), 'backend-providers', 'docs', fileName),
-      join(process.cwd(), '..', 'backend-providers', 'docs', fileName),
-      join(process.cwd(), '..', 'web-providers', 'docs', fileName),
-      join(process.cwd(), 'web-providers', 'docs', fileName),
-      join(process.cwd(), '..', 'docs', fileName),
-      join(process.cwd(), 'legacy-docs', fileName),
-    ];
-  }
-
-  private sourceLabelFromPath(filePath: string, fileName: string): string {
-    if (filePath.includes('backend-providers')) {
-      return `backend-providers/docs/${fileName}`;
-    }
-    if (filePath.includes('web-providers')) {
-      return `web-providers/docs/${fileName}`;
-    }
-    return `docs/${fileName}`;
-  }
-
-  private async readPromptDoc(
-    fileName: string,
-  ): Promise<{ content: string; source: string }> {
-    const candidates = this.promptCandidates(fileName);
-
-    for (const candidate of candidates) {
-      try {
-        const content = await fs.readFile(candidate, 'utf8');
-        return {
-          content,
-          source: this.sourceLabelFromPath(candidate, fileName),
-        };
-      } catch {
-        // Continue trying fallback locations.
-      }
-    }
-
-    throw new InternalServerErrorException(
-      `No se pudo cargar la plantilla ${fileName}. Rutas intentadas: ${candidates.join(', ')}`,
-    );
-  }
-
   async getScrapingPromptTemplates() {
+    const scrapingFile = 'prompt-scrapear-productos.md';
+    const zipFile = 'prompt-scrapear-productos-zip.md';
+
     const [scrapingPromptDoc, zipPromptDoc] = await Promise.all([
-      this.readPromptDoc('prompt-scrapear-productos.md'),
-      this.readPromptDoc('prompt-scrapear-productos-zip.md'),
+      readPromptTemplateIfPresent(scrapingFile),
+      readPromptTemplateIfPresent(zipFile),
     ]);
 
-    return {
-      scrapingPrompt: scrapingPromptDoc.content,
-      zipPrompt: zipPromptDoc.content,
-      sources: {
-        scrapingPrompt: scrapingPromptDoc.source,
-        zipPrompt: zipPromptDoc.source,
-      },
-    };
+    return composeScrapingPromptTemplatesPayload(
+      scrapingFile,
+      zipFile,
+      scrapingPromptDoc,
+      zipPromptDoc,
+    );
   }
 
   private normalizeText(input?: string): string {
