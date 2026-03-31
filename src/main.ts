@@ -11,7 +11,7 @@ async function bootstrap() {
 
   const origins =
     process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ??
-    ['http://localhost:3000', 'http://localhost:3001', 'https://panalbee-providers-web-production.up.railway.app'];
+    ['http://localhost:3000', 'http://localhost:3001', 'https://panalbee-providers.netlify.app'];
 
   app.enableCors({
     origin: origins,
