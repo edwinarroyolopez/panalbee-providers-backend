@@ -2,8 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
-import dns from 'node:dns';
-dns.setServers(['1.1.1.1', '8.8.8.8']);
+// import dns from 'node:dns';
+// dns.setServers(['1.1.1.1', '8.8.8.8']);
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,7 +11,7 @@ async function bootstrap() {
 
   const origins =
     process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ??
-    ['http://localhost:3000', 'http://localhost:3001'];
+    ['http://localhost:3000', 'http://localhost:3001', 'https://panalbee-providers-web-production.up.railway.app'];
 
   app.enableCors({
     origin: origins,
