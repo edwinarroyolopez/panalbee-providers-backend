@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 import { Provider, ProviderDocument } from './schemas/provider.schema';
 import {
   ProviderDecision,
@@ -84,6 +86,27 @@ export class ProvidersService {
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
   ) {}
+
+  private async readPromptDoc(fileName: string): Promise<string> {
+    const filePath = join(process.cwd(), '..', 'docs', fileName);
+    return fs.readFile(filePath, 'utf8');
+  }
+
+  async getScrapingPromptTemplates() {
+    const [scrapingPrompt, zipPrompt] = await Promise.all([
+      this.readPromptDoc('prompt-scrapear-productos.md'),
+      this.readPromptDoc('prompt-scrapear-productos-zip.md'),
+    ]);
+
+    return {
+      scrapingPrompt,
+      zipPrompt,
+      sources: {
+        scrapingPrompt: 'docs/prompt-scrapear-productos.md',
+        zipPrompt: 'docs/prompt-scrapear-productos-zip.md',
+      },
+    };
+  }
 
   private normalizeText(input?: string): string {
     return (input ?? '').trim();
