@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, Types } from 'mongoose';
+import { ClientSession, Model, PipelineStage, Types } from 'mongoose';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { Provider, ProviderDocument } from './schemas/provider.schema';
@@ -19,6 +19,7 @@ import {
   ProviderImportMode,
 } from './dto/import-providers.dto';
 import { ListProvidersQueryDto } from './dto/list-providers.dto';
+import type { ListProvidersSort } from './dto/list-providers.dto';
 import { ChangeProviderStateDto } from './dto/change-provider-state.dto';
 import { ProviderDecisionType, ProviderStatus } from './providers.types';
 import { IntakeLote, IntakeLoteDocument } from '../products/schemas/intake-lote.schema';
@@ -114,6 +115,10 @@ export class ProvidersService {
 
   private normalizeKey(input?: string): string {
     return this.normalizeText(input).toLowerCase().replace(/\s+/g, '_');
+  }
+
+  private escapeRegex(input: string): string {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private normalizeWebsite(input?: string): string | undefined {
@@ -438,23 +443,117 @@ export class ProvidersService {
   async listProviders(query: ListProvidersQueryDto) {
     const page = query.page && query.page > 0 ? query.page : 1;
     const categoryKey = this.normalizeKey(query.category);
+    const search = this.normalizeText(query.search);
 
-    const filter: Record<string, unknown> = {};
+    const initialMatch: Record<string, unknown> = {};
     if (categoryKey) {
-      filter.mainCategoryKey = categoryKey;
+      initialMatch.mainCategoryKey = categoryKey;
+    }
+    if (search) {
+      initialMatch.name = { $regex: this.escapeRegex(search), $options: 'i' };
     }
 
-    const [items, total, categories] = await Promise.all([
-      this.providerModel
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * PAGE_SIZE)
-        .limit(PAGE_SIZE)
-        .lean()
-        .exec(),
-      this.providerModel.countDocuments(filter).exec(),
+    const sortKey: ListProvidersSort = query.sort ?? 'products_first';
+    let sortSpec: Record<string, 1 | -1>;
+    switch (sortKey) {
+      case 'recent':
+        sortSpec = { createdAt: -1 };
+        break;
+      case 'name_asc':
+        sortSpec = { name: 1 };
+        break;
+      case 'name_desc':
+        sortSpec = { name: -1 };
+        break;
+      case 'products_first':
+      default:
+        sortSpec = { hasProducts: -1, createdAt: -1 };
+        break;
+    }
+
+    const pipeline: PipelineStage[] = [];
+
+    if (Object.keys(initialMatch).length > 0) {
+      pipeline.push({ $match: initialMatch });
+    }
+
+    pipeline.push({
+      $lookup: {
+        from: 'products',
+        let: { pid: '$_id' },
+        pipeline: [
+          { $match: { $expr: { $eq: ['$providerId', '$$pid'] } } },
+          { $count: 'c' },
+        ],
+        as: 'productCountArr',
+      },
+    });
+
+    pipeline.push({
+      $addFields: {
+        productCount: {
+          $ifNull: [{ $arrayElemAt: ['$productCountArr.c', 0] }, 0],
+        },
+      },
+    });
+
+    pipeline.push({
+      $addFields: {
+        hasProducts: { $gt: ['$productCount', 0] },
+        hasWebsite: {
+          $gt: [
+            { $strLenCP: { $trim: { input: { $ifNull: ['$website', ''] } } } },
+            0,
+          ],
+        },
+      },
+    });
+
+    if (query.hasWebsite === 'true') {
+      pipeline.push({ $match: { hasWebsite: true } });
+    } else if (query.hasWebsite === 'false') {
+      pipeline.push({ $match: { hasWebsite: false } });
+    }
+
+    if (query.hasProducts === 'true') {
+      pipeline.push({ $match: { hasProducts: true } });
+    } else if (query.hasProducts === 'false') {
+      pipeline.push({ $match: { hasProducts: false } });
+    }
+
+    pipeline.push({ $sort: sortSpec });
+
+    pipeline.push({
+      $facet: {
+        items: [
+          { $skip: (page - 1) * PAGE_SIZE },
+          { $limit: PAGE_SIZE },
+          { $project: { productCountArr: 0 } },
+        ],
+        meta: [{ $count: 'total' }],
+      },
+    });
+
+    const [facetResult, categories] = await Promise.all([
+      this.providerModel.aggregate(pipeline).exec(),
       this.providerModel.distinct('mainCategory').exec(),
     ]);
+
+    const bundle = facetResult[0] as
+      | { items: Record<string, unknown>[]; meta: { total: number }[] }
+      | undefined;
+    const rawItems = bundle?.items ?? [];
+    const total = bundle?.meta?.[0]?.total ?? 0;
+
+    const items = rawItems.map((doc) => {
+      const { hasWebsite: hw, hasProducts: hp, productCount: pc, ...rest } = doc;
+      return {
+        ...rest,
+        hasWebsite: Boolean(hw),
+        hasProducts: Boolean(hp),
+        productCount: typeof pc === 'number' ? pc : 0,
+      };
+    });
 
     return {
       items,
