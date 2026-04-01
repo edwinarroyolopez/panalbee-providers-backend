@@ -1,4 +1,4 @@
-# PROMPT TEMPLATE — SCRAPING DE PRODUCTOS PARA AIRLOCK (JSON)
+# PROMPT TEMPLATE - SCRAPING DE PRODUCTOS PARA AIRLOCK (JSON)
 
 ## 1) Variables editables
 
@@ -23,9 +23,7 @@ Variables canonicas esperadas por el airlock UI para interpolacion:
 
 ## 2) Objetivo operativo
 
-Navega el sitio objetivo y extrae productos visibles con enfoque comercial, devolviendo SOLO JSON valido compatible con intake de productos del airlock.
-
-La salida debe parecerse al shape ligero del intake, pero con datos realmente utiles y consistentes.
+Navega el sitio objetivo y extrae productos con cobertura exhaustiva del catalogo accesible, devolviendo SOLO JSON valido compatible con intake de productos del airlock.
 
 No quiero:
 
@@ -33,9 +31,8 @@ No quiero:
 * markdown
 * texto explicativo
 * resultados armados solo desde el grid
-* nombres corruptos
-* URLs mal cerradas
-* galerias incompletas
+* cobertura parcial comoda
+* cierre prematuro sin agotar catalogo razonablemente
 
 ## 3) Contrato de salida obligatorio
 
@@ -63,64 +60,91 @@ Devuelve SOLO JSON valido con esta estructura exacta:
 "source_website": ""
 }
 
-## 4) Regla critica de extraccion
+No agregues texto fuera del JSON final.
+
+## 4) Regla critica de extraccion y completitud
 
 No construyas el producto final solo con informacion del grid/listado.
 
+`MIN_TARGET_RESULTS` es piso operativo, no techo.
+
+Si el sitio tiene 100 o mas productos accesibles, el trabajo correcto es extraerlos TODOS los verificables y accesibles, no solo los primeros 100.
+
 ## 4.1) Flujo obligatorio en 2 etapas
 
-### ETAPA 1 — Discovery (obligatoria)
+### ETAPA 1 - Discovery exhaustivo (obligatoria)
 
-- descubrir colecciones/listados relevantes
-- reunir links reales de producto
-- deduplicar links antes de avanzar
+Discovery significa cobertura real del catalogo, no una muestra.
 
-### ETAPA 2 — Detail extraction (obligatoria)
+Debes:
 
-- entrar uno por uno a cada link deduplicado
-- construir el producto final desde la ficha individual
-- extraer desde detalle: `name`, `description`, `price`, `compareAtPrice` (si existe), `mainImageUrl`, `imageUrls` (galeria completa), `externalId`, `sku` (si existe), `productType`
+* localizar rutas de catalogo relevantes (colecciones, categorias, subcategorias, shop, products, all, search)
+* recorrer colecciones/categorias hermanas claramente enlazadas
+* detectar y agotar paginacion numerada o next/prev
+* accionar `load more` hasta agotamiento
+* soportar scroll infinito cuando exista
+* capturar enlaces de producto desde multiples superficies del sitio
+* usar sitemap HTML/XML y/o feeds/JSON embebido publico cuando ayuden a ampliar cobertura
+* resolver URLs relativas
+* deduplicar por URL canonica o slug normalizado antes de detalle
 
-Si no se completan ambas etapas, el resultado se considera invalido.
+### ETAPA 2 - Detail extraction (obligatoria)
 
-Proceso obligatorio:
+Para cada URL deduplicada de producto:
 
-1. primero detecta y recopila links reales de producto desde el grid/listado
-2. luego recorre uno por uno esos links
-3. la informacion final del producto debe salir principalmente desde la ficha individual
-4. solo usa el grid como apoyo inicial para descubrir productos, no como fuente final suficiente
+* entrar uno por uno a la ficha individual
+* construir el producto final principalmente desde detalle
+* extraer desde detalle: `name`, `description`, `price`, `compareAtPrice` (si existe), `mainImageUrl`, `imageUrls` (galeria completa), `externalId`, `sku` (si existe), `productType`
 
-Si no entraste a la ficha individual, el producto no esta suficientemente validado.
+Si no se completan ambas etapas, el resultado es invalido.
 
-## 5) Reglas del contrato
+## 5) Regla de no cierre prematuro (comportamientos invalidos)
+
+Es invalido terminar si ocurre cualquiera de estos casos:
+
+* detenerse tras la primera pagina
+* detenerse tras una sola coleccion cuando hay mas relevantes
+* devolver solo productos visibles en viewport inicial
+* devolver solo datos del grid sin abrir detalle
+* parar apenas llega a 100 cuando hay mas productos accesibles
+* ignorar colecciones/categorias hermanas claramente enlazadas
+* ignorar productos alcanzables por paginacion, load more o scroll
+* omitir links de producto detectados sin justificacion tecnica real
+
+## 6) Criterio de parada valido (cuando SI puedes terminar)
+
+Solo puedes cerrar cuando se cumplan condiciones de agotamiento razonable del catalogo accesible:
+
+1. ya recorriste todas las rutas de catalogo relevantes detectadas
+2. ya agotaste paginacion, load more e infinite scroll donde existan
+3. ya no aparecen nuevas URLs de producto tras deduplicacion final
+4. ya visitaste en detalle las URLs deduplicadas que eran accesibles
+5. si hay bloqueo real (captcha duro, 403 persistente, bloqueo geo, login obligatorio), lo asumiste como limite tecnico y no inventaste datos
+
+Si el sitio realmente tiene menos productos verificables que `MIN_TARGET_RESULTS`, devuelve todos los verificables y marca `target_reached: false`.
+
+## 7) Reglas del contrato por producto
 
 * `products` es obligatorio.
 * `name` y `price` son obligatorios en cada producto.
 * `name` debe salir limpio, legible y tomado desde la ficha individual.
 * `description` debe salir desde la ficha individual si existe.
 * `category` debe salir con el valor de `PROVIDER_CATEGORY` salvo evidencia clara de una categoria mas especifica compatible.
-* `productType` debe inferirse de forma util y comercial cuando sea posible:
-
-  * `set`
-  * `pijama`
-  * `batola`
-  * `camison`
-  * `short`
-  * etc.
+* `productType` debe inferirse de forma util y comercial cuando sea posible.
 * `mainImageUrl` es obligatoria si `REQUIRE_IMAGES=true`.
 * `imageUrls` debe contener la galeria real del producto sin duplicados.
 * `compareAtPrice` solo si existe evidencia real de precio anterior o tachado.
-* `currency` debe salir como `COP` salvo evidencia distinta.
+* `currency` debe salir como `DEFAULT_CURRENCY` salvo evidencia distinta.
 * `externalId` debe capturarse usando prioridad:
 
   1. URL canonica del producto
   2. slug
   3. id interno verificable
 * `sku` solo si existe realmente en la ficha individual.
-* Si un campo opcional no existe, omitulo. No uses `null`.
+* Si un campo opcional no existe, omitelo. No uses `null`.
 * No inventes datos.
 
-## 6) Reglas estrictas para nombre, descripcion e imagenes
+## 8) Reglas estrictas para nombre, descripcion e imagenes
 
 ### Nombre
 
@@ -138,44 +162,16 @@ Si no entraste a la ficha individual, el producto no esta suficientemente valida
 
 ### Imagenes
 
-* primero identifica la imagen principal real del producto desde la ficha
-* luego extrae la galeria completa de esa misma ficha
+* identifica la imagen principal real desde la ficha
+* extrae la galeria completa de esa misma ficha
 * `imageUrls` debe contener varias imagenes si la ficha realmente las tiene
-* deduplica imagenes
+* deduplica imagenes de forma estricta
 * convierte URLs relativas a absolutas
 * limpia caracteres basura al inicio o final de la URL
 * no aceptes placeholders
 * la primera imagen de `imageUrls` debe coincidir con `mainImageUrl`
 
-## 7) Reglas estrictas de proceso
-
-### Cobertura
-
-* recorre toda la coleccion visible o todas las colecciones relevantes
-* detecta paginacion, load more, scroll o rutas equivalentes
-* no te quedes con la primera pantalla
-
-### Descubrimiento
-
-* primero reune el universo de links reales de productos
-* deduplica esos links antes de entrar a detalle
-
-### Enriquecimiento
-
-Para cada link de producto:
-
-* abre la ficha individual
-* extrae nombre limpio
-* extrae precio real
-* extrae compareAtPrice si existe
-* extrae descripcion
-* extrae imagen principal
-* extrae galeria
-* extrae sku si existe
-* extrae externalId util
-* infiere productType
-
-### Dedupe
+## 9) Dedupe y validacion
 
 Deduplica por prioridad:
 
@@ -184,15 +180,25 @@ Deduplica por prioridad:
 3. externalId
 4. nombre + precio + mainImageUrl
 
-### Validacion
-
 No incluyas un producto final si:
 
 * no tiene `name`
 * no tiene `price`
 * no tiene `mainImageUrl` cuando `REQUIRE_IMAGES=true`
 
-## 8) Reglas especiales anti-errores
+## 10) Verificacion interna obligatoria antes del JSON final
+
+Antes de responder, verifica internamente (sin cambiar el formato del JSON final):
+
+1. cuantos links unicos se reunieron en discovery
+2. cuantos detalles de producto se pudieron abrir
+3. cuantos productos validos sobrevivieron normalizacion
+4. si hubo colecciones/rutas omitidas o bloqueadas
+5. si el resultado representa razonablemente la totalidad accesible del catalogo
+
+Si la verificacion falla, continua el scraping y no cierres temprano.
+
+## 11) Reglas especiales anti-errores
 
 * No devuelvas objetos fuera de la raiz `products`.
 * No devuelvas arrays sin wrapper.
@@ -203,25 +209,7 @@ No incluyas un producto final si:
 * No inventes descripcion a partir del nombre.
 * No cierres extraccion desde grid: el producto final debe salir del detalle.
 
-## 8.1) Validacion minima antes de responder
-
-Antes de devolver JSON final, verifica por producto:
-
-1. `name` limpio (sin fragmentos JSON/URL)
-2. `mainImageUrl` valida y utilizable
-3. `imageUrls` deduplicada y completa segun ficha
-4. `description` presente si la ficha la publica
-5. `externalId` consistente (URL/slug/id)
-
-## 9) Objetivo minimo
-
-Debes intentar llegar a `MIN_TARGET_RESULTS`.
-Si el sitio realmente no tiene suficientes productos visibles/accesibles, devuelve todos los verificables y marca:
-
-* `target_reached: false`
-* `total_found` con el total real encontrado
-
-## 10) Contexto del proveedor a respetar
+## 12) Contexto del proveedor a respetar
 
 Proveedor: PROVIDER_NAME
 Website objetivo: TARGET_WEBSITE
@@ -231,6 +219,6 @@ Contexto operativo: PROVIDER_CONTEXT
 Instagram referencia: INSTAGRAM_REFERENCE
 Facebook referencia: FACEBOOK_REFERENCE
 
-## 11) Salida final
+## 13) Salida final
 
 Devuelve SOLO JSON valido.

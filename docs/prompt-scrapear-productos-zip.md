@@ -1,4 +1,4 @@
-# PROMPT TEMPLATE — ZIP PUPPETEER PARA SCRAPING DE PRODUCTOS
+# PROMPT TEMPLATE - ZIP PUPPETEER PARA SCRAPING DE PRODUCTOS
 
 ## 1) Variables editables
 
@@ -21,7 +21,7 @@ Variables canonicas esperadas por el airlock UI para interpolacion:
 
 ## 2) Objetivo
 
-Quiero que generes un proyecto completo en Node.js usando Puppeteer, empaquetado en un `.zip`, listo para correr localmente, que scrapee el sitio objetivo y genere un JSON final compatible con intake de productos del airlock.
+Genera un proyecto completo en Node.js usando Puppeteer, empaquetado en un `.zip`, listo para correr localmente, que scrapee el sitio objetivo con cobertura exhaustiva del catalogo accesible y genere JSON final compatible con intake de productos del airlock.
 
 ## 3) Contrato de salida del JSON
 
@@ -49,53 +49,98 @@ El scraper debe generar un archivo JSON con esta estructura exacta:
 "source_website": ""
 }
 
+No cambies ese shape.
+
 ## 4) Regla critica de arquitectura del scraper
 
 El proyecto debe separar claramente estas etapas:
 
-1. discovery
+1. discovery (subsistema de cobertura)
 
-   * detectar colecciones/listados
-   * reunir links reales de productos
-   * deduplicar links
+   * detectar y recorrer rutas de catalogo relevantes (`collections`, `categories`, `shop`, `products`, `all`, `search`)
+   * detectar multiples colecciones/categorias enlazadas
+   * agotar paginacion numerada y next/prev
+   * accionar boton `load more` hasta agotamiento
+   * soportar `infinite scroll` hasta estabilizacion
+   * recolectar links reales de producto desde multiples superficies
+   * usar sitemap HTML/XML y feeds/JSON embebido publico como fallback util
+   * deduplicar links por URL canonica/slug normalizado
+   * continuar hasta que no aparezcan URLs unicas nuevas
 
 2. detail extraction
 
-   * entrar a cada link individual
-   * extraer nombre limpio
-   * descripcion clara
-   * precio
-   * compareAtPrice
-   * sku
-   * externalId
-   * imagen principal
-   * galeria completa
+   * entrar a cada link individual deduplicado
+   * extraer nombre limpio, descripcion, precio, compareAtPrice, sku, externalId, imagen principal y galeria completa
+   * construir el producto final principalmente desde ficha individual, no desde grid
 
 3. normalization
 
-   * limpiar textos
-   * limpiar URLs
-   * convertir precios a enteros
-   * deduplicar imagenes
-   * validar shape final
-
-No quiero un scraper que arme productos finales directamente desde el grid.
+   * limpiar textos y URLs
+   * resolver URLs relativas
+   * convertir precios a enteros numericos
+   * deduplicar imagenes de forma estricta
+   * validar shape final y requeridos
 
 Si no se respetan discovery + detail extraction + normalization, el resultado no cumple este prompt.
 
-## 5) Requisitos funcionales obligatorios
+## 5) Regla de completitud y anti-early-exit
+
+`MIN_TARGET_RESULTS` es piso, no techo.
+
+Regla operativa obligatoria:
+
+* si el sitio tiene 100 o mas productos accesibles, el objetivo correcto es extraer TODO el catalogo accesible verificable
+* si tiene menos, devolver todos los verificables
+* si hay bloqueo tecnico real, reportarlo con honestidad (sin inventar productos)
+
+Queda prohibido por diseno que el proyecto:
+
+* se detenga solo por alcanzar 100
+* procese solo la primera pagina
+* procese solo una coleccion cuando hay mas relevantes
+* construya productos solo desde grid
+* procese solo los primeros N links sin justificacion tecnica
+* ignore links detectados pero no visitados sin registrar motivo
+
+## 6) Requisitos funcionales obligatorios
 
 El proyecto debe:
 
 * navegar realmente el sitio objetivo
-* detectar coleccion principal, paginacion, load more o rutas equivalentes
-* recorrer todos los productos visibles y accesibles
-* entrar a cada ficha individual
-* construir el JSON final desde la ficha individual, no solo desde el grid
-* intentar llegar a `MIN_TARGET_RESULTS`
-* si el sitio no llega a ese numero, devolver todos los verificables y marcar `target_reached: false`
+* recorrer paginacion, `load more` o scroll infinito segun aplique
+* explorar multiples colecciones/categorias relevantes
+* entrar a cada ficha individual deduplicada accesible
+* construir el JSON final desde detalle
+* deduplicar por canonical URL/slug
+* continuar discovery hasta estabilizacion de URLs unicas
 
-## 6) Reglas estrictas de extraccion
+## 7) Robustez del scraper
+
+Incluye, cuando aplique:
+
+* retries razonables por navegacion o extraccion
+* timeouts claros por etapa
+* esperas inteligentes (evitar sleeps ciegos)
+* manejo de navegacion rota y errores recuperables
+* dedupe estricto de imagenes
+* checkpoint o persistencia temporal para no perder avance en corridas largas
+* separacion limpia de extractores por etapa
+
+## 8) Reporte operativo de cobertura (sin romper JSON principal)
+
+Ademas del JSON final principal, el proyecto debe generar trazabilidad local clara (logs y/o archivo auxiliar) con minimo:
+
+* colecciones/categorias recorridas
+* paginas o acciones de paginacion ejecutadas
+* total de candidate links
+* total de candidate links unicos
+* total de fichas visitadas
+* total de productos validos
+* razones de descarte
+* bloqueos tecnicos detectados
+* veredicto de catalogo: agotado razonablemente o parcial
+
+## 9) Reglas estrictas de extraccion
 
 ### Nombre
 
@@ -133,7 +178,7 @@ El proyecto debe:
   3. id interno verificable
 * `sku` solo si existe
 
-## 7) Requisitos del proyecto zip
+## 10) Requisitos del proyecto zip
 
 Debe incluir como minimo:
 
@@ -145,11 +190,11 @@ Debe incluir como minimo:
 * utilidades de extraccion de detalle
 * utilidades de normalizacion
 * carpeta o archivo de salida JSON
-* manejo basico de errores
-* deduplicacion
+* reporte local de cobertura
+* manejo de errores y deduplicacion
 * validacion final del shape
 
-## 8) README obligatorio
+## 11) README obligatorio
 
 Debe explicar claramente:
 
@@ -159,20 +204,20 @@ Debe explicar claramente:
 * donde configurar URL objetivo
 * como cambiar `MIN_TARGET_RESULTS`
 * donde queda el JSON resultante
+* donde queda el reporte de cobertura
 * limitaciones conocidas
 
-## 9) Restricciones
+## 12) Restricciones
 
-* no me entregues solo codigo suelto
-* no me entregues un ejemplo parcial
-* no cambies el contrato de salida
-* no construyas productos solo desde el grid
-* no permitas nombres contaminados con fragmentos de JSON o URLs
-* no asumas que una sola imagen basta si la ficha tiene galeria
-* no asumas que la primera pagina agota el catalogo
-* no inventes datos
+* no entregar codigo suelto ni ejemplo parcial
+* no cambiar el contrato de salida
+* no construir productos solo desde grid
+* no permitir nombres contaminados con JSON/URL
+* no asumir que una sola imagen basta si hay galeria
+* no asumir que la primera pagina agota el catalogo
+* no inventar datos faltantes
 
-## 9.1) Checklist de calidad antes de empaquetar ZIP
+## 12.1) Checklist de calidad antes de empaquetar ZIP
 
 Para cada producto del JSON final:
 
@@ -182,7 +227,13 @@ Para cada producto del JSON final:
 4. `imageUrls` completa y deduplicada
 5. `externalId` consistente
 
-## 10) Contexto del proveedor
+Y a nivel corrida completa:
+
+6. links unicos estabilizados (sin nuevos links tras ultima pasada)
+7. detalle visitado para links accesibles
+8. cobertura declarada como agotada o parcial con razon tecnica
+
+## 13) Contexto del proveedor
 
 Proveedor: PROVIDER_NAME
 Website objetivo: TARGET_WEBSITE
@@ -192,12 +243,13 @@ Contexto operativo: PROVIDER_CONTEXT
 Instagram referencia: INSTAGRAM_REFERENCE
 Facebook referencia: FACEBOOK_REFERENCE
 
-## 11) Resultado esperado
+## 14) Resultado esperado
 
 Quiero:
 
 * el proyecto completo
 * empaquetado en `.zip`
 * listo para correr localmente
-* con scraper robusto
-* y con JSON final compatible con el airlock, pero ligero y esencial
+* con scraper robusto para catalogos grandes
+* con JSON final compatible con airlock
+* con trazabilidad local de cobertura y completitud
