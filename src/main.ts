@@ -1,12 +1,21 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 // import dns from 'node:dns';
 // dns.setServers(['1.1.1.1', '8.8.8.8']);
 
+const BODY_PARSER_LIMIT = process.env.BODY_PARSER_LIMIT ?? '20mb';
+
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+  app.use(json({ limit: BODY_PARSER_LIMIT }));
+  app.use(urlencoded({ extended: true, limit: BODY_PARSER_LIMIT }));
+
   app.setGlobalPrefix('api');
 
   const origins =
