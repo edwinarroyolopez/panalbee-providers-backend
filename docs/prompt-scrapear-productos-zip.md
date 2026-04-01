@@ -93,6 +93,8 @@ Regla operativa obligatoria:
 * si tiene menos, devolver todos los verificables
 * si hay bloqueo tecnico real, reportarlo con honestidad (sin inventar productos)
 
+`catalogo agotado razonablemente` solo aplica con evidencia operativa: estabilizacion de URLs unicas y agotamiento de rutas detectadas (no por percepcion general).
+
 Queda prohibido por diseno que el proyecto:
 
 * se detenga solo por alcanzar 100

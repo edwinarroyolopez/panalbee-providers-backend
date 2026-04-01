@@ -16,7 +16,7 @@ STRICT_WEBSITE_ONLY = true
 REQUIRE_IMAGES = true
 REQUIRE_DETAIL_PAGE = true
 DEDUPE_BY = "canonical_url_or_slug"
-ALLOW_PARTIAL_IF_SITE_LIMITED = true
+PARTIAL_ALLOWED_ONLY_WITH_CONFIRMED_TECHNICAL_BLOCK = true
 
 Variables canonicas esperadas por el airlock UI para interpolacion:
 `PROVIDER_NAME`, `TARGET_WEBSITE`, `PROVIDER_CATEGORY`, `PROVIDER_LOCATION`, `PROVIDER_CONTEXT`, `INSTAGRAM_REFERENCE`, `FACEBOOK_REFERENCE`, `MIN_TARGET_RESULTS`, `DEFAULT_CURRENCY`.
@@ -114,6 +114,8 @@ Es invalido terminar si ocurre cualquiera de estos casos:
 ## 6) Criterio de parada valido (cuando SI puedes terminar)
 
 Solo puedes cerrar cuando se cumplan condiciones de agotamiento razonable del catalogo accesible:
+
+`catalogo agotado razonablemente` requiere evidencia operativa, no percepcion general: estabilizacion de URLs unicas + agotamiento de rutas detectadas.
 
 1. ya recorriste todas las rutas de catalogo relevantes detectadas
 2. ya agotaste paginacion, load more e infinite scroll donde existan
