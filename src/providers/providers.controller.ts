@@ -15,6 +15,10 @@ import { ProvidersService } from './providers.service';
 import { ListProvidersQueryDto } from './dto/list-providers.dto';
 import { ImportProvidersDto } from './dto/import-providers.dto';
 import { ChangeProviderStateDto } from './dto/change-provider-state.dto';
+import {
+  AddProviderShortlistDto,
+  PatchProviderShortlistDto,
+} from './dto/provider-shortlist.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('providers')
@@ -51,9 +55,45 @@ export class ProvidersController {
     return this.providersService.importProviders(dto, req.user.sub);
   }
 
+  @Get('shortlist/ids')
+  listShortlistIds(@Req() req: { user: { accountId: string } }) {
+    return this.providersService
+      .providerShortlistIds(req.user.accountId)
+      .then((providerIds) => ({ providerIds }));
+  }
+
+  @Get('shortlist')
+  listShortlist(@Req() req: { user: { accountId: string } }) {
+    return this.providersService.listProviderShortlist(req.user.accountId);
+  }
+
+  @Post('shortlist')
+  addShortlist(@Body() dto: AddProviderShortlistDto, @Req() req: any) {
+    return this.providersService.addProviderShortlist(req.user.accountId, req.user.sub, dto);
+  }
+
+  @Patch('shortlist/:providerId')
+  patchShortlist(
+    @Param('providerId') providerId: string,
+    @Body() dto: PatchProviderShortlistDto,
+    @Req() req: any,
+  ) {
+    return this.providersService.patchProviderShortlistNote(
+      req.user.accountId,
+      req.user.sub,
+      providerId,
+      dto.note,
+    );
+  }
+
+  @Delete('shortlist/:providerId')
+  removeShortlist(@Param('providerId') providerId: string, @Req() req: any) {
+    return this.providersService.removeProviderShortlist(req.user.accountId, providerId);
+  }
+
   @Get(':providerId')
-  getById(@Param('providerId') providerId: string) {
-    return this.providersService.getProviderById(providerId);
+  getById(@Param('providerId') providerId: string, @Req() req: any) {
+    return this.providersService.getProviderById(providerId, req.user.accountId);
   }
 
   @Patch(':providerId/state')

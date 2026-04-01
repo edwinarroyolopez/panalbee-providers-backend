@@ -7,6 +7,10 @@ import {
   ProviderDecision,
   ProviderDecisionSchema,
 } from './schemas/provider-decision.schema';
+import {
+  ProviderShortlistEntry,
+  ProviderShortlistEntrySchema,
+} from './schemas/provider-shortlist-entry.schema';
 import { IntakeLote, IntakeLoteSchema } from '../products/schemas/intake-lote.schema';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 
@@ -17,6 +21,7 @@ import { Product, ProductSchema } from '../products/schemas/product.schema';
       { name: ProviderDecision.name, schema: ProviderDecisionSchema },
       { name: IntakeLote.name, schema: IntakeLoteSchema },
       { name: Product.name, schema: ProductSchema },
+      { name: ProviderShortlistEntry.name, schema: ProviderShortlistEntrySchema },
     ]),
   ],
   controllers: [ProvidersController],

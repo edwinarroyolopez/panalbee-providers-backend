@@ -5,7 +5,22 @@ export type ListProvidersSort =
   | 'products_first'
   | 'recent'
   | 'name_asc'
-  | 'name_desc';
+  | 'name_desc'
+  | 'intel_growth_desc'
+  | 'intel_growth_asc';
+
+/** Filtro por recomendación parseada desde `internalNotes` (línea intel:). */
+export type ListProvidersIntelRec =
+  | 'all'
+  | 'priorizar_para_panalbee'
+  | 'priorizar_para_growth'
+  | 'priorizar_para_ambos'
+  | 'revisar_manual'
+  | 'descartar'
+  | 'sin_intel';
+
+/** Oportunidad growth (score `go=` en notas). */
+export type ListProvidersIntelGrowth = 'all' | 'alta' | 'media';
 
 export class ListProvidersQueryDto {
   @IsOptional()
@@ -33,6 +48,37 @@ export class ListProvidersQueryDto {
   hasProducts?: 'true' | 'false';
 
   @IsOptional()
-  @IsIn(['products_first', 'recent', 'name_asc', 'name_desc'])
+  @IsIn([
+    'products_first',
+    'recent',
+    'name_asc',
+    'name_desc',
+    'intel_growth_desc',
+    'intel_growth_asc',
+  ])
   sort?: ListProvidersSort;
+
+  @IsOptional()
+  @IsIn([
+    'all',
+    'priorizar_para_panalbee',
+    'priorizar_para_growth',
+    'priorizar_para_ambos',
+    'revisar_manual',
+    'descartar',
+    'sin_intel',
+  ])
+  intelRec?: ListProvidersIntelRec;
+
+  @IsOptional()
+  @IsIn(['all', 'alta', 'media'])
+  intelGrowth?: ListProvidersIntelGrowth;
+
+  /**
+   * `pipeline`: hasta 400 proveedores que pasan filtros, ordenados por GO desc (fijo),
+   * agrupados por recomendación en cliente/servidor. La lista clásica usa `list` (default).
+   */
+  @IsOptional()
+  @IsIn(['list', 'pipeline'])
+  view?: 'list' | 'pipeline';
 }
