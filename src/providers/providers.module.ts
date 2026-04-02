@@ -11,6 +11,7 @@ import {
   ProviderShortlistEntry,
   ProviderShortlistEntrySchema,
 } from './schemas/provider-shortlist-entry.schema';
+import { ProviderEvent, ProviderEventSchema } from './schemas/provider-event.schema';
 import { IntakeLote, IntakeLoteSchema } from '../products/schemas/intake-lote.schema';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 
@@ -22,6 +23,7 @@ import { Product, ProductSchema } from '../products/schemas/product.schema';
       { name: IntakeLote.name, schema: IntakeLoteSchema },
       { name: Product.name, schema: ProductSchema },
       { name: ProviderShortlistEntry.name, schema: ProviderShortlistEntrySchema },
+      { name: ProviderEvent.name, schema: ProviderEventSchema },
     ]),
   ],
   controllers: [ProvidersController],

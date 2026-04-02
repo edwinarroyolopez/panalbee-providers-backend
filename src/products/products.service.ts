@@ -19,12 +19,6 @@ import {
 import { IntakeLote, IntakeLoteDocument } from './schemas/intake-lote.schema';
 import { ProductDecisionType, ProductStatus } from './products.types';
 
-type ImportValidationError = {
-  index: number;
-  field: string;
-  message: string;
-};
-
 type NormalizedProductInput = {
   name: string;
   category?: string;
@@ -40,6 +34,16 @@ type NormalizedProductInput = {
   description?: string;
   intakeKey: string;
 };
+
+type ProductImportValidationError = {
+  index: number;
+  field: string;
+  message: string;
+  code: string;
+  blocksRecord: boolean;
+};
+
+type ProductImportMode = 'all_or_nothing' | 'insert_valid_only';
 
 const PRODUCT_TRANSITIONS: Record<ProductStatus, ProductStatus[]> = {
   [ProductStatus.CARGADO]: [
@@ -177,26 +181,58 @@ export class ProductsService {
     }
   }
 
+  private blockedIndicesFromErrors(errors: ProductImportValidationError[]): Set<number> {
+    const blocked = new Set<number>();
+    for (const e of errors) {
+      if (e.blocksRecord) blocked.add(e.index);
+    }
+    return blocked;
+  }
+
+  private summarizeProductImport(total: number, errors: ProductImportValidationError[]) {
+    const blocked = this.blockedIndicesFromErrors(errors);
+    const insertableIndices: number[] = [];
+    for (let i = 0; i < total; i += 1) {
+      if (!blocked.has(i)) insertableIndices.push(i);
+    }
+
+    return {
+      total,
+      insertableCount: insertableIndices.length,
+      notInsertableCount: blocked.size,
+      errorCount: errors.length,
+      insertableIndices,
+    };
+  }
+
   private async validateImportPayload(
     providerObjectId: Types.ObjectId,
     dto: ImportProductsDto,
   ): Promise<{
     normalized: NormalizedProductInput[];
-    errors: ImportValidationError[];
+    errors: ProductImportValidationError[];
   }> {
     const normalized = dto.products.map((item) => this.normalizeImportItem(item));
-    const errors: ImportValidationError[] = [];
+    const errors: ProductImportValidationError[] = [];
 
     const keyToIndexes = new Map<string, number[]>();
     normalized.forEach((item, index) => {
       if (!item.name) {
-        errors.push({ index, field: 'name', message: 'El nombre es obligatorio.' });
+        errors.push({
+          index,
+          field: 'name',
+          code: 'campo_requerido',
+          message: 'El nombre es obligatorio.',
+          blocksRecord: true,
+        });
       }
       if (item.price == null || item.price < 0.01) {
         errors.push({
           index,
           field: 'price',
+          code: 'valor_invalido',
           message: 'El precio debe ser un numero mayor a cero.',
+          blocksRecord: true,
         });
       }
 
@@ -211,7 +247,9 @@ export class ProductsService {
         errors.push({
           index,
           field: 'intakeKey',
+          code: 'duplicado_en_archivo',
           message: 'Producto duplicado dentro del mismo archivo (misma clave de intake).',
+          blocksRecord: true,
         });
       });
     });
@@ -228,7 +266,9 @@ export class ProductsService {
         errors.push({
           index,
           field: 'intakeKey',
+          code: 'duplicado_en_base',
           message: 'Producto ya registrado previamente para este proveedor.',
+          blocksRecord: true,
         });
       }
     });
@@ -239,29 +279,48 @@ export class ProductsService {
   async validateImport(providerId: string, dto: ImportProductsDto) {
     const providerObjectId = await this.assertProviderExists(providerId);
     const { errors, normalized } = await this.validateImportPayload(providerObjectId, dto);
+    const summary = this.summarizeProductImport(normalized.length, errors);
 
     return {
-      valid: errors.length === 0,
+      valid: summary.insertableCount === summary.total,
       providerId,
-      summary: {
-        total: normalized.length,
-        valid: errors.length === 0 ? normalized.length : 0,
-        invalid: errors.length > 0 ? normalized.length : 0,
-      },
+      summary,
       errors,
     };
   }
 
   async importProducts(providerId: string, dto: ImportProductsDto, actorUserId: string) {
+    const importMode: ProductImportMode = dto.importMode ?? 'all_or_nothing';
     const providerObjectId = await this.assertProviderExists(providerId);
     const { errors, normalized } = await this.validateImportPayload(providerObjectId, dto);
+    const summary = this.summarizeProductImport(normalized.length, errors);
 
-    if (errors.length > 0) {
+    if (importMode === 'all_or_nothing' && errors.length > 0) {
       throw new BadRequestException({
         message: 'El archivo JSON contiene errores de validacion.',
         errors,
+        summary,
       });
     }
+
+    const blocked = this.blockedIndicesFromErrors(errors);
+    const toInsert = normalized.filter((_, i) => !blocked.has(i));
+
+    if (toInsert.length === 0) {
+      throw new BadRequestException({
+        message: 'No hay registros insertables en este archivo.',
+        errors,
+        summary,
+      });
+    }
+
+    const validationSnapshot = errors.map((e) => ({
+      index: e.index,
+      field: e.field,
+      message: e.message,
+      code: e.code,
+      blocksRecord: e.blocksRecord,
+    }));
 
     const now = new Date();
 
@@ -270,16 +329,18 @@ export class ProductsService {
       kind: 'productos',
       summary: {
         total: normalized.length,
-        valid: normalized.length,
-        invalid: 0,
-        inserted: normalized.length,
+        valid: summary.insertableCount,
+        invalid: summary.notInsertableCount,
+        inserted: toInsert.length,
+        skipped: importMode === 'insert_valid_only' ? summary.notInsertableCount : undefined,
+        importMode,
       },
-      validationErrors: [],
+      validationErrors: importMode === 'insert_valid_only' ? validationSnapshot : [],
       actorUserId,
     });
 
     const inserted = await this.productModel.insertMany(
-      normalized.map((item) => ({
+      toInsert.map((item) => ({
         providerId: providerObjectId,
         intakeLoteId: intakeLote._id,
         name: item.name,
@@ -303,11 +364,16 @@ export class ProductsService {
       })),
     );
 
-    await this.providersService.applyProductIntakeCompleted(providerId, actorUserId);
+    if (inserted.length > 0) {
+      await this.providersService.applyProductIntakeCompleted(providerId, actorUserId);
+    }
 
+    const skippedCount = normalized.length - inserted.length;
     return {
       intakeLote,
       insertedCount: inserted.length,
+      skippedCount,
+      importMode,
       products: inserted,
     };
   }

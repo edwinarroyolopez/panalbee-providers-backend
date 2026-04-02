@@ -15,6 +15,8 @@ import { ProvidersService } from './providers.service';
 import { ListProvidersQueryDto } from './dto/list-providers.dto';
 import { ImportProvidersDto } from './dto/import-providers.dto';
 import { ChangeProviderStateDto } from './dto/change-provider-state.dto';
+import { UpdateProviderDto } from './dto/update-provider.dto';
+import { CreateProviderEventDto } from './dto/create-provider-event.dto';
 import {
   AddProviderShortlistDto,
   PatchProviderShortlistDto,
@@ -94,6 +96,24 @@ export class ProvidersController {
   @Get(':providerId')
   getById(@Param('providerId') providerId: string, @Req() req: any) {
     return this.providersService.getProviderById(providerId, req.user.accountId);
+  }
+
+  @Patch(':providerId')
+  updateProvider(
+    @Param('providerId') providerId: string,
+    @Body() dto: UpdateProviderDto,
+    @Req() req: any,
+  ) {
+    return this.providersService.updateProviderMetadata(providerId, dto, req.user.sub);
+  }
+
+  @Post(':providerId/events')
+  createProviderEvent(
+    @Param('providerId') providerId: string,
+    @Body() dto: CreateProviderEventDto,
+    @Req() req: any,
+  ) {
+    return this.providersService.createProviderEvent(providerId, dto, req.user.sub);
   }
 
   @Patch(':providerId/state')

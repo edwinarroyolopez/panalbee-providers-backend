@@ -15,6 +15,7 @@ import {
   ProviderDecision,
   ProviderDecisionDocument,
 } from './schemas/provider-decision.schema';
+import { ProviderEvent, ProviderEventDocument } from './schemas/provider-event.schema';
 import {
   ImportProviderItem,
   ImportProvidersDto,
@@ -23,8 +24,10 @@ import {
 import { ListProvidersQueryDto } from './dto/list-providers.dto';
 import type { ListProvidersIntelRec, ListProvidersSort } from './dto/list-providers.dto';
 import { ChangeProviderStateDto } from './dto/change-provider-state.dto';
+import { UpdateProviderDto } from './dto/update-provider.dto';
+import { CreateProviderEventDto } from './dto/create-provider-event.dto';
 import type { AddProviderShortlistDto } from './dto/provider-shortlist.dto';
-import { ProviderDecisionType, ProviderStatus } from './providers.types';
+import { ProviderDecisionType, ProviderEventType, ProviderStatus } from './providers.types';
 import { IntakeLote, IntakeLoteDocument } from '../products/schemas/intake-lote.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import {
@@ -35,6 +38,7 @@ import {
   buildIntakeKey,
   normalizeKey as normalizeProviderCategoryKey,
   normalizeProviderImportRow,
+  normalizeWebsiteKey,
 } from './lib/provider-import-normalize';
 import { parseIntelFromInternalNotes } from './lib/provider-intel-parse';
 
@@ -111,6 +115,8 @@ export class ProvidersService {
     private readonly productModel: Model<ProductDocument>,
     @InjectModel(ProviderShortlistEntry.name)
     private readonly providerShortlistModel: Model<ProviderShortlistEntryDocument>,
+    @InjectModel(ProviderEvent.name)
+    private readonly providerEventModel: Model<ProviderEventDocument>,
   ) {}
 
   async getScrapingPromptTemplates() {
@@ -140,6 +146,126 @@ export class ProvidersService {
 
   private escapeRegex(input: string): string {
     return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private toISOStringSafe(value: Date | string | undefined): string {
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'string') return value;
+    return new Date(0).toISOString();
+  }
+
+  private sanitizeMeta(meta?: Record<string, unknown>): Record<string, unknown> | undefined {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return undefined;
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(meta)) {
+      const k = this.normalizeText(key);
+      if (!k) continue;
+      if (
+        value === null ||
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+      ) {
+        out[k] = value;
+      }
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+
+  private ensureProviderId(providerId: string): Types.ObjectId {
+    if (!Types.ObjectId.isValid(providerId)) {
+      throw new NotFoundException('Proveedor no encontrado.');
+    }
+    return new Types.ObjectId(providerId);
+  }
+
+  private buildTimelineItems(
+    decisions: Array<{
+      _id: Types.ObjectId;
+      decisionType: ProviderDecisionType;
+      previousStatus: ProviderStatus;
+      nextStatus: ProviderStatus;
+      reasons: string[];
+      comment?: string;
+      actorUserId: string;
+      decidedAt: Date | string;
+    }>,
+    events: Array<{
+      _id: Types.ObjectId;
+      eventType: ProviderEventType;
+      title: string;
+      comment?: string;
+      meta?: Record<string, unknown>;
+      actorUserId: string;
+      createdAt: Date | string;
+    }>,
+  ) {
+    const decisionItems = decisions.map((d) => ({
+      id: String(d._id),
+      kind: 'decision' as const,
+      at: this.toISOStringSafe(d.decidedAt),
+      actorUserId: d.actorUserId,
+      type: d.decisionType,
+      title: `${d.decisionType} · ${d.previousStatus} → ${d.nextStatus}`,
+      comment: this.normalizeText(d.comment) || undefined,
+      reasons: d.reasons,
+      decision: {
+        decisionType: d.decisionType,
+        previousStatus: d.previousStatus,
+        nextStatus: d.nextStatus,
+      },
+    }));
+
+    const eventItems = events.map((event) => ({
+      id: String(event._id),
+      kind: 'event' as const,
+      at: this.toISOStringSafe(event.createdAt),
+      actorUserId: event.actorUserId,
+      type: event.eventType,
+      title: event.title,
+      comment: this.normalizeText(event.comment) || undefined,
+      meta: event.meta,
+    }));
+
+    return [...decisionItems, ...eventItems].sort((a, b) => b.at.localeCompare(a.at));
+  }
+
+  private hasOwnField<T extends object, K extends PropertyKey>(obj: T, key: K): boolean {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+  }
+
+  private buildProviderDraftForUpdate(provider: ProviderDocument, dto: UpdateProviderDto): ImportProviderItem {
+    const raw = {
+      name: this.hasOwnField(dto, 'name') ? dto.name : provider.name,
+      category: this.hasOwnField(dto, 'mainCategory') ? dto.mainCategory : provider.mainCategory,
+      city: this.hasOwnField(dto, 'city') ? dto.city : provider.city,
+      country: this.hasOwnField(dto, 'country') ? dto.country : provider.country,
+      phones: this.hasOwnField(dto, 'phones') ? dto.phones : provider.phones,
+      instagram: this.hasOwnField(dto, 'instagram') ? dto.instagram : provider.instagram,
+      facebook: this.hasOwnField(dto, 'facebook') ? dto.facebook : provider.facebook,
+      website: this.hasOwnField(dto, 'website') ? dto.website : provider.website,
+      address: this.hasOwnField(dto, 'address') ? dto.address : provider.address,
+      description: this.hasOwnField(dto, 'description') ? dto.description : provider.description,
+      trustLevel: this.hasOwnField(dto, 'trustLevel') ? dto.trustLevel : provider.trustLevel,
+      internalNotes: this.hasOwnField(dto, 'internalNotes')
+        ? dto.internalNotes
+        : provider.internalNotes,
+    };
+
+    return {
+      name: raw.name ?? '',
+      category: raw.category ?? '',
+      country: raw.country ?? '',
+      city: raw.city ?? '',
+      phones: Array.isArray(raw.phones) ? raw.phones : [],
+      instagram: raw.instagram,
+      facebook: raw.facebook,
+      website: raw.website,
+      address: raw.address,
+      description: raw.description,
+      trustLevel: raw.trustLevel,
+      internalNotes: raw.internalNotes,
+    };
   }
 
   private mapIntelPreview(notes?: string): {
@@ -809,22 +935,180 @@ export class ProvidersService {
     };
   }
 
-  async getProviderById(providerId: string, accountId: string) {
-    if (!Types.ObjectId.isValid(providerId)) {
+  async updateProviderMetadata(providerId: string, dto: UpdateProviderDto, actorUserId: string) {
+    const providerObjectId = this.ensureProviderId(providerId);
+    const provider = await this.providerModel.findById(providerObjectId).exec();
+    if (!provider) {
       throw new NotFoundException('Proveedor no encontrado.');
     }
+
+    const previousWebsiteKey = normalizeWebsiteKey(provider.website);
+    const normalizedDraft = normalizeProviderImportRow(this.buildProviderDraftForUpdate(provider, dto));
+
+    if (!normalizedDraft.name) {
+      throw new BadRequestException('El nombre no puede quedar vacío.');
+    }
+    if (!normalizedDraft.category) {
+      throw new BadRequestException('La categoría principal no puede quedar vacía.');
+    }
+    if (!normalizedDraft.country) {
+      throw new BadRequestException('El país no puede quedar vacío.');
+    }
+
+    const nextIntakeKey = buildIntakeKey({
+      name: normalizedDraft.name,
+      country: normalizedDraft.country,
+      website: normalizedDraft.website,
+    });
+
+    const conflict = await this.providerModel
+      .findOne({ intakeKey: nextIntakeKey, _id: { $ne: provider._id } })
+      .select({ _id: 1 })
+      .lean()
+      .exec();
+    if (conflict) {
+      throw new ConflictException(
+        'Existe otro proveedor con la misma clave de intake. Revisa nombre, país o website.',
+      );
+    }
+
+    provider.name = normalizedDraft.name;
+    provider.mainCategory = normalizedDraft.category;
+    provider.mainCategoryKey = normalizeProviderCategoryKey(normalizedDraft.category);
+    provider.country = normalizedDraft.country;
+    provider.city = normalizedDraft.city || undefined;
+    provider.phones = normalizedDraft.phones ?? [];
+    provider.instagram = normalizedDraft.instagram;
+    provider.facebook = normalizedDraft.facebook;
+    provider.website = normalizedDraft.website;
+    provider.address = normalizedDraft.address;
+    provider.description = normalizedDraft.description;
+    provider.trustLevel = normalizedDraft.trustLevel;
+    provider.internalNotes = normalizedDraft.internalNotes;
+    provider.intakeKey = nextIntakeKey;
+    provider.updatedByUserId = actorUserId;
+
+    await provider.save();
+
+    const nextWebsiteKey = normalizeWebsiteKey(provider.website);
+    const autoEvents: ProviderEventDocument[] = [];
+
+    if (!previousWebsiteKey && nextWebsiteKey) {
+      const created = await this.providerEventModel.create({
+        providerId: provider._id,
+        eventType: ProviderEventType.WEBSITE_AGREGADO,
+        title: 'Website operativo agregado',
+        comment: `Se registró website válido: ${provider.website}`,
+        actorUserId,
+        meta: { website: provider.website },
+        createdAt: new Date(),
+      });
+      autoEvents.push(created);
+    } else if (previousWebsiteKey && nextWebsiteKey && previousWebsiteKey !== nextWebsiteKey) {
+      const created = await this.providerEventModel.create({
+        providerId: provider._id,
+        eventType: ProviderEventType.WEBSITE_CORREGIDO,
+        title: 'Website corregido',
+        comment: `${previousWebsiteKey} → ${nextWebsiteKey}`,
+        actorUserId,
+        meta: {
+          previousWebsite: previousWebsiteKey,
+          nextWebsite: nextWebsiteKey,
+        },
+        createdAt: new Date(),
+      });
+      autoEvents.push(created);
+    }
+
+    return {
+      provider: provider.toObject(),
+      autoEvents: autoEvents.map((event) => ({
+        _id: String(event._id),
+        providerId: String(event.providerId),
+        eventType: event.eventType,
+        title: event.title,
+        comment: event.comment,
+        meta: event.meta,
+        actorUserId: event.actorUserId,
+        createdAt: event.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  async createProviderEvent(providerId: string, dto: CreateProviderEventDto, actorUserId: string) {
+    const providerObjectId = this.ensureProviderId(providerId);
+    const provider = await this.providerModel.findById(providerObjectId).lean().exec();
+    if (!provider) {
+      throw new NotFoundException('Proveedor no encontrado.');
+    }
+
+    const title = this.normalizeText(dto.title);
+    if (!title) {
+      throw new BadRequestException('El título del evento es obligatorio.');
+    }
+
+    const event = await this.providerEventModel.create({
+      providerId: provider._id,
+      eventType: dto.eventType,
+      title,
+      comment: this.normalizeText(dto.comment) || undefined,
+      meta: this.sanitizeMeta(dto.meta),
+      actorUserId,
+      createdAt: new Date(),
+    });
+
+    return {
+      event: {
+        _id: String(event._id),
+        providerId: String(event.providerId),
+        eventType: event.eventType,
+        title: event.title,
+        comment: event.comment,
+        meta: event.meta,
+        actorUserId: event.actorUserId,
+        createdAt: event.createdAt.toISOString(),
+      },
+    };
+  }
+
+  async getProviderById(providerId: string, accountId: string) {
+    this.ensureProviderId(providerId);
 
     const provider = await this.providerModel.findById(providerId).lean().exec();
     if (!provider) {
       throw new NotFoundException('Proveedor no encontrado.');
     }
 
-    const decisions = await this.providerDecisionModel
-      .find({ providerId: provider._id })
-      .sort({ decidedAt: -1 })
-      .limit(50)
-      .lean()
-      .exec();
+    const [decisions, rawEvents] = await Promise.all([
+      this.providerDecisionModel
+        .find({ providerId: provider._id })
+        .sort({ decidedAt: -1 })
+        .limit(50)
+        .lean()
+        .exec(),
+      this.providerEventModel
+        .find({ providerId: provider._id })
+        .sort({ createdAt: -1 })
+        .limit(80)
+        .lean()
+        .exec(),
+    ]);
+
+    const events = rawEvents.map((event) => ({
+      _id: String(event._id),
+      providerId: String(event.providerId),
+      eventType: event.eventType,
+      title: event.title,
+      comment: event.comment,
+      meta: event.meta,
+      actorUserId: event.actorUserId,
+      createdAt:
+        event.createdAt instanceof Date
+          ? event.createdAt.toISOString()
+          : String(event.createdAt ?? ''),
+    }));
+
+    const timeline = this.buildTimelineItems(decisions, rawEvents);
 
     const shortlistEntry = await this.providerShortlistModel
       .findOne({
@@ -839,6 +1123,8 @@ export class ProvidersService {
     return {
       provider,
       decisions,
+      events,
+      timeline,
       intelParsed: parseIntelFromInternalNotes(
         typeof provider.internalNotes === 'string' ? provider.internalNotes : undefined,
       ),

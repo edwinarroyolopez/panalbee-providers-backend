@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -69,4 +70,9 @@ export class ImportProductsDto {
   @ValidateNested({ each: true })
   @Type(() => ImportProductItem)
   products: ImportProductItem[];
+
+  /** Por defecto `all_or_nothing` (comportamiento histórico). */
+  @IsOptional()
+  @IsEnum(['all_or_nothing', 'insert_valid_only'])
+  importMode?: 'all_or_nothing' | 'insert_valid_only';
 }
