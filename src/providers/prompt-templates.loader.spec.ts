@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   buildPromptCandidatePaths,
+  composeResearchPromptTemplatePayload,
   composeScrapingPromptTemplatesPayload,
   readPromptTemplateIfPresent,
 } from './prompt-templates.loader';
@@ -87,6 +88,25 @@ describe('prompt-templates.loader', () => {
         if (prev === undefined) delete process.env.PROVIDER_PROMPTS_DIR;
         else process.env.PROVIDER_PROMPTS_DIR = prev;
       }
+    });
+
+    it('composeResearchPromptTemplatePayload exposes available template metadata', () => {
+      const payload = composeResearchPromptTemplatePayload('prompt-buscar-proveedores.md', {
+        content: 'research-body',
+        source: 'docs/prompt-buscar-proveedores.md',
+      });
+
+      expect(payload.availability.researchPrompt).toBe(true);
+      expect(payload.researchPrompt).toBe('research-body');
+      expect(payload.source).toBe('docs/prompt-buscar-proveedores.md');
+      expect(payload.error).toBeUndefined();
+    });
+
+    it('composeResearchPromptTemplatePayload reports missing template', () => {
+      const payload = composeResearchPromptTemplatePayload('missing.md', null);
+      expect(payload.availability.researchPrompt).toBe(false);
+      expect(payload.researchPrompt).toBeUndefined();
+      expect(payload.error).toContain('missing.md');
     });
   });
 });

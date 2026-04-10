@@ -42,6 +42,11 @@ export class ProvidersController {
     return this.providersService.getScrapingPromptTemplates();
   }
 
+  @Get('prompts/research')
+  getResearchPrompt() {
+    return this.providersService.getResearchPromptTemplate();
+  }
+
   @Delete('import/lotes/:loteId')
   revertProviderImportLote(@Param('loteId') loteId: string, @Req() req: any) {
     return this.providersService.revertProviderImportLote(loteId, req.user.sub);

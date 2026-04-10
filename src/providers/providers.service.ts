@@ -31,6 +31,7 @@ import { ProviderDecisionType, ProviderEventType, ProviderStatus } from './provi
 import { IntakeLote, IntakeLoteDocument } from '../products/schemas/intake-lote.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import {
+  composeResearchPromptTemplatePayload,
   composeScrapingPromptTemplatesPayload,
   readPromptTemplateIfPresent,
 } from './prompt-templates.loader';
@@ -134,6 +135,12 @@ export class ProvidersService {
       scrapingPromptDoc,
       zipPromptDoc,
     );
+  }
+
+  async getResearchPromptTemplate() {
+    const fileName = 'prompt-buscar-proveedores.md';
+    const researchPromptDoc = await readPromptTemplateIfPresent(fileName);
+    return composeResearchPromptTemplatePayload(fileName, researchPromptDoc);
   }
 
   private normalizeText(input?: string): string {

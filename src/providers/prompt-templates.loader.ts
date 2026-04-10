@@ -82,6 +82,13 @@ export type ScrapingPromptTemplatesPayload = {
   errors?: { scrapingPrompt?: string; zipPrompt?: string };
 };
 
+export type ResearchPromptTemplatePayload = {
+  researchPrompt?: string;
+  availability: { researchPrompt: boolean };
+  source?: string;
+  error?: string;
+};
+
 /**
  * Builds the API payload from two optional template reads (partial success allowed).
  */
@@ -123,5 +130,24 @@ export function composeScrapingPromptTemplatesPayload(
       zipPrompt: zipPromptDoc?.source,
     },
     ...(Object.keys(errors).length > 0 ? { errors } : {}),
+  };
+}
+
+export function composeResearchPromptTemplatePayload(
+  fileName: string,
+  researchPromptDoc: PromptTemplateReadOk | null,
+): ResearchPromptTemplatePayload {
+  const researchPrompt = researchPromptDoc?.content;
+  const available = Boolean(researchPrompt && researchPrompt.trim());
+
+  return {
+    researchPrompt,
+    availability: { researchPrompt: available },
+    source: researchPromptDoc?.source,
+    ...(available
+      ? {}
+      : {
+          error: missingTemplateMessage(fileName, buildPromptCandidatePaths(fileName)),
+        }),
   };
 }
